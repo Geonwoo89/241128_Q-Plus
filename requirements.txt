@@ -3,4 +3,3 @@ langchain
 openai
 PyPDF2
 faiss-cpu
-langchain-community

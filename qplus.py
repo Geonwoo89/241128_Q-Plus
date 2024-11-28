@@ -7,6 +7,10 @@ from langchain.vectorstores import FAISS
 from langchain.chains import RetrievalQA
 from langchain.chat_models import ChatOpenAI
 import streamlit as st
+from dotenv import load_dotenv  # .env 파일을 로드하기 위해 추가
+
+# .env 파일 로드
+load_dotenv()
 
 # PDF 파일을 업로드하고 인덱싱하는 함수
 def load_and_index_pdfs(uploaded_files):
@@ -24,15 +28,15 @@ def load_and_index_pdfs(uploaded_files):
     docs = splitter.create_documents(all_texts)
 
     # OpenAI Embedding 사용하여 벡터화
-    embeddings = OpenAIEmbeddings()
+    openai_api_key = os.getenv("OPENAI_API_KEY")  # 환경 변수에서 API 키 읽기
     embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)  # API 키 전달
     vector_store = FAISS.from_documents(docs, embeddings)
     return vector_store
 
 # QA 체인 생성 함수
 def create_qa_chain(vector_store):
-    # OpenAI API 키를 환경 변수에서 가져오기
-    openai_api_key = os.getenv("OPENAI_API_KEY")
+    # OpenAI API 키 환경 변수에서 가져오기
+    openai_api_key = os.getenv("OPENAI_API_KEY")  # 환경 변수에서 API 키 읽기
     llm = ChatOpenAI(
         model="gpt-3.5-turbo",
         temperature=0,
