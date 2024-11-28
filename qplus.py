@@ -25,35 +25,25 @@ def load_and_index_pdfs(uploaded_files):
 
             # PDF의 각 페이지를 처리
             for page_number, page in enumerate(reader.pages, start=1):
-                try:
-                    # PDF 페이지에서 텍스트 추출
-                    text = page.extract_text()
+                text = page.extract_text()
 
-                    # 텍스트가 없을 경우 OCR 처리
-                    if not text or text.strip() == "":
-                        images = page_to_images(temp_file_path, page_number)
-                        text = ocr_from_images(images)
+                if text is None:  # 텍스트 추출이 안되면 이미지 처리
+                    # 페이지를 이미지로 변환 후 OCR 처리
+                    images = page_to_images(temp_file_path, page_number)
+                    text = ocr_from_images(images)
 
-                    # 텍스트가 여전히 없으면 빈 문자열로 처리
-                    if not text:
-                        text = ""
+                all_texts.append(text)
 
-                    all_texts.append(text)
-                    metadatas.append({"document_name": uploaded_file.name, "page_number": page_number})
-
-                except Exception as e:
-                    st.error(f"페이지 {page_number} 처리 중 오류 발생: {e}")
-                    continue
-
-    # 빈 텍스트 리스트 확인
-    if not all_texts:
-        raise ValueError("PDF에서 추출된 텍스트가 없습니다. PDF 파일이 비어 있거나 이미지 처리에 실패했을 수 있습니다.")
+                # 메타데이터 추가: 문서명과 페이지 번호
+                metadatas.append({"document_name": uploaded_file.name, "page_number": page_number})
 
     # 텍스트를 작은 덩어리로 나누기
     splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
     docs = splitter.create_documents(all_texts, metadatas=metadatas)
 
-    # 벡터 스토어 생성
+    if not openai_api_key:
+        raise ValueError("OPENAI_API_KEY를 설정하세요.")  # API 키 확인
+
     embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)  # API 키 전달
     vector_store = FAISS.from_documents(docs, embeddings)
     return vector_store
@@ -93,28 +83,24 @@ def main():
     uploaded_files = st.file_uploader("PDF 파일을 업로드하세요", accept_multiple_files=True, type="pdf")
 
     if uploaded_files:
-        try:
-            # 업로드된 파일들을 인덱싱
-            vector_store = load_and_index_pdfs(uploaded_files)
-            qa_chain = create_qa_chain(vector_store)
+        # 업로드된 파일들을 인덱싱
+        vector_store = load_and_index_pdfs(uploaded_files)
+        qa_chain = create_qa_chain(vector_store)
 
-            # 질문 입력 받기
-            query = st.text_input("질문을 입력하세요:")
+        # 질문 입력 받기
+        query = st.text_input("질문을 입력하세요:")
 
-            if query:
-                # 질문에 대한 답변 실행
-                response = qa_chain.run(query)
-                st.write("답변:", response)
+        if query:
+            # 질문에 대한 답변 실행
+            response = qa_chain.run(query)
+            st.write("답변:", response)
 
-                # 관련 문서와 페이지 번호 출력
-                st.write("관련된 문서 및 페이지 번호:")
-                results = vector_store.similarity_search_with_score(query, k=3)  # 상위 3개의 관련 문서 검색
-                for result in results:
-                    metadata = result[0].metadata  # 메타데이터 추출
-                    st.write(f"문서명: {metadata['document_name']}, 페이지 번호: {metadata['page_number']}")
-
-        except Exception as e:
-            st.error(f"오류가 발생했습니다: {e}")
+            # 관련 문서와 페이지 번호 출력
+            st.write("관련된 문서 및 페이지 번호:")
+            results = vector_store.similarity_search_with_score(query, k=3)  # 상위 3개의 관련 문서 검색
+            for result in results:
+                metadata = result[0].metadata  # 메타데이터 추출
+                st.write(f"문서명: {metadata['document_name']}, 페이지 번호: {metadata['page_number']}")
 
 if __name__ == "__main__":
     main()
