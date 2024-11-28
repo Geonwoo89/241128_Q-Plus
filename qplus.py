@@ -1,4 +1,3 @@
-import os
 import tempfile
 from PyPDF2 import PdfReader
 from langchain.text_splitter import CharacterTextSplitter
@@ -7,6 +6,9 @@ from langchain_community.vectorstores import FAISS  # 변경된 임포트 경로
 from langchain.chains import RetrievalQA
 from langchain.chat_models import ChatOpenAI
 import streamlit as st
+
+# Streamlit secrets에서 API 키 읽어오기
+openai_api_key = st.secrets["api_keys"]["openai_api_key"]
 
 # PDF 파일을 업로드하고 인덱싱하는 함수
 def load_and_index_pdfs(uploaded_files):
@@ -23,10 +25,8 @@ def load_and_index_pdfs(uploaded_files):
     splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
     docs = splitter.create_documents(all_texts)
 
-    # 환경 변수에서 API 키 읽기
-    openai_api_key = os.getenv("OPENAI_API_KEY")
     if not openai_api_key:
-        raise ValueError("OPENAI_API_KEY 환경 변수를 설정하세요.")  # 환경 변수 체크
+        raise ValueError("OPENAI_API_KEY를 설정하세요.")  # API 키 확인
 
     embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)  # API 키 전달
     vector_store = FAISS.from_documents(docs, embeddings)
@@ -34,10 +34,8 @@ def load_and_index_pdfs(uploaded_files):
 
 # QA 체인 생성 함수
 def create_qa_chain(vector_store):
-    # 환경 변수에서 API 키 읽기
-    openai_api_key = os.getenv("OPENAI_API_KEY")
     if not openai_api_key:
-        raise ValueError("OPENAI_API_KEY 환경 변수를 설정하세요.")  # 환경 변수 체크
+        raise ValueError("OPENAI_API_KEY를 설정하세요.")  # API 키 확인
     
     llm = ChatOpenAI(
         model="gpt-3.5-turbo",
