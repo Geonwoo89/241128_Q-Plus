@@ -25,6 +25,7 @@ def load_and_index_pdfs(uploaded_files):
 
     # OpenAI Embedding 사용하여 벡터화
     embeddings = OpenAIEmbeddings()
+    embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)  # API 키 전달
     vector_store = FAISS.from_documents(docs, embeddings)
     return vector_store
 
