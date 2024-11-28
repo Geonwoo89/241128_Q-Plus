@@ -82,6 +82,12 @@ def main():
     # PDF 파일 업로드 기능
     uploaded_files = st.file_uploader("PDF 파일을 업로드하세요", accept_multiple_files=True, type="pdf")
 
+    import time
+    with st.spinner("파일 처리 중..."):
+        time.sleep(5)  # 예시로 처리 시간 대체
+    st.success("처리 완료!")
+
+
     if uploaded_files:
         # 업로드된 파일들을 인덱싱
         vector_store = load_and_index_pdfs(uploaded_files)
