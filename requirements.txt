@@ -6,3 +6,6 @@ faiss-cpu
 langchain-community
 python-dotenv
 tiktoken
+pdf2image
+pytesseract
+Pillow

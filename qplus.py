@@ -1,11 +1,14 @@
 import tempfile
 from PyPDF2 import PdfReader
+from PIL import Image
+import pytesseract
 from langchain.text_splitter import CharacterTextSplitter
 from langchain_community.embeddings import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain.chains import RetrievalQA
 from langchain.chat_models import ChatOpenAI
 import streamlit as st
+import io
 
 # Streamlit secrets에서 API 키 읽어오기
 openai_api_key = st.secrets["openai"]["api_key"]
@@ -23,6 +26,12 @@ def load_and_index_pdfs(uploaded_files):
             # PDF의 각 페이지를 처리
             for page_number, page in enumerate(reader.pages, start=1):
                 text = page.extract_text()
+
+                if text is None:  # 텍스트 추출이 안되면 이미지 처리
+                    # 페이지를 이미지로 변환 후 OCR 처리
+                    images = page_to_images(temp_file_path, page_number)
+                    text = ocr_from_images(images)
+
                 all_texts.append(text)
 
                 # 메타데이터 추가: 문서명과 페이지 번호
@@ -38,6 +47,19 @@ def load_and_index_pdfs(uploaded_files):
     embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)  # API 키 전달
     vector_store = FAISS.from_documents(docs, embeddings)
     return vector_store
+
+# 페이지를 이미지로 변환하는 함수 (PDF에서 이미지 추출)
+def page_to_images(pdf_path, page_number):
+    from pdf2image import convert_from_path
+    images = convert_from_path(pdf_path, first_page=page_number, last_page=page_number)
+    return images
+
+# 이미지에서 텍스트를 추출하는 함수 (OCR)
+def ocr_from_images(images):
+    text = ""
+    for image in images:
+        text += pytesseract.image_to_string(image)
+    return text
 
 # QA 체인 생성 함수
 def create_qa_chain(vector_store):
