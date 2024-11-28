@@ -8,7 +8,7 @@ from langchain.chat_models import ChatOpenAI
 import streamlit as st
 
 # Streamlit secrets에서 API 키 읽어오기
-openai_api_key = st.secrets["api_keys"]["openai_api_key"]
+openai_api_key = st.secrets["openai"]["api_key"]
 
 # PDF 파일을 업로드하고 인덱싱하는 함수
 def load_and_index_pdfs(uploaded_files):
