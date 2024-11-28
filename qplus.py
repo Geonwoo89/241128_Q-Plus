@@ -2,7 +2,7 @@ import tempfile
 from PyPDF2 import PdfReader
 from langchain.text_splitter import CharacterTextSplitter
 from langchain_community.embeddings import OpenAIEmbeddings
-from langchain_community.vectorstores import FAISS  # 변경된 임포트 경로
+from langchain_community.vectorstores import FAISS
 from langchain.chains import RetrievalQA
 from langchain.chat_models import ChatOpenAI
 import streamlit as st
@@ -13,17 +13,24 @@ openai_api_key = st.secrets["openai"]["api_key"]
 # PDF 파일을 업로드하고 인덱싱하는 함수
 def load_and_index_pdfs(uploaded_files):
     all_texts = []
+    metadatas = []  # 메타데이터 저장용 리스트
     for uploaded_file in uploaded_files:
         with tempfile.NamedTemporaryFile(delete=False) as temp_file:
             temp_file.write(uploaded_file.read())
             temp_file_path = temp_file.name
             reader = PdfReader(temp_file_path)
-            for page in reader.pages:
-                all_texts.append(page.extract_text())
+
+            # PDF의 각 페이지를 처리
+            for page_number, page in enumerate(reader.pages, start=1):
+                text = page.extract_text()
+                all_texts.append(text)
+
+                # 메타데이터 추가: 문서명과 페이지 번호
+                metadatas.append({"document_name": uploaded_file.name, "page_number": page_number})
 
     # 텍스트를 작은 덩어리로 나누기
     splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-    docs = splitter.create_documents(all_texts)
+    docs = splitter.create_documents(all_texts, metadatas=metadatas)
 
     if not openai_api_key:
         raise ValueError("OPENAI_API_KEY를 설정하세요.")  # API 키 확인
@@ -65,6 +72,13 @@ def main():
             # 질문에 대한 답변 실행
             response = qa_chain.run(query)
             st.write("답변:", response)
+
+            # 관련 문서와 페이지 번호 출력
+            st.write("관련된 문서 및 페이지 번호:")
+            results = vector_store.similarity_search_with_score(query, k=3)  # 상위 3개의 관련 문서 검색
+            for result in results:
+                metadata = result[0].metadata  # 메타데이터 추출
+                st.write(f"문서명: {metadata['document_name']}, 페이지 번호: {metadata['page_number']}")
 
 if __name__ == "__main__":
     main()
