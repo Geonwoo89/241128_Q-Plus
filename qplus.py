@@ -12,6 +12,13 @@ from dotenv import load_dotenv  # .env 파일을 로드하기 위해 추가
 # .env 파일 로드
 load_dotenv()  # .env 파일을 읽어 환경 변수로 로드
 
+# .env 파일에서 API 키 읽기
+openai_api_key = os.getenv("OPENAI_API_KEY")
+if not openai_api_key:
+    raise ValueError("OPENAI_API_KEY 환경 변수를 설정하세요.")  # 환경 변수 체크
+else:
+    print(f"API Key Loaded: {openai_api_key}")  # 디버깅을 위한 출력
+
 # PDF 파일을 업로드하고 인덱싱하는 함수
 def load_and_index_pdfs(uploaded_files):
     all_texts = []
@@ -27,22 +34,12 @@ def load_and_index_pdfs(uploaded_files):
     splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
     docs = splitter.create_documents(all_texts)
 
-    # .env 파일에서 API 키 읽기
-    openai_api_key = os.getenv("OPENAI_API_KEY")
-    if not openai_api_key:
-        raise ValueError("OPENAI_API_KEY 환경 변수를 설정하세요.")  # 환경 변수 체크
-
     embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)  # API 키 전달
     vector_store = FAISS.from_documents(docs, embeddings)
     return vector_store
 
 # QA 체인 생성 함수
 def create_qa_chain(vector_store):
-    # .env 파일에서 API 키 읽기
-    openai_api_key = os.getenv("OPENAI_API_KEY")
-    if not openai_api_key:
-        raise ValueError("OPENAI_API_KEY 환경 변수를 설정하세요.")  # 환경 변수 체크
-    
     llm = ChatOpenAI(
         model="gpt-3.5-turbo",
         temperature=0,
