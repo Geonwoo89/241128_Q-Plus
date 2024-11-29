@@ -1,5 +1,5 @@
 import tempfile
-import pdfplumber
+from PyPDF2 import PdfReader
 from langchain.text_splitter import CharacterTextSplitter
 from langchain_community.embeddings import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
@@ -7,54 +7,40 @@ from langchain.chains import RetrievalQA
 from langchain.chat_models import ChatOpenAI
 import streamlit as st
 import io
-from concurrent.futures import ThreadPoolExecutor
 
 # Streamlit secrets에서 API 키 읽어오기
 openai_api_key = st.secrets["openai"]["api_key"]
 
-# 병렬 처리를 위한 함수
-def process_pdf_file(uploaded_file):
-    with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-        temp_file.write(uploaded_file.read())
-        temp_file_path = temp_file.name
-
-        # PDFPlumber로 텍스트 추출
-        texts = []
-        metadatas = []
-
-        with pdfplumber.open(temp_file_path) as pdf:
-            for page_number, page in enumerate(pdf.pages, start=1):
-                text = page.extract_text()
-
-                if not text:
-                    text = "[빈 페이지]"
-
-                texts.append(text)
-                metadatas.append({
-                    "document_name": uploaded_file.name,
-                    "page_number": page_number
-                })
-
-        return texts, metadatas
-
 # PDF 파일을 업로드하고 인덱싱하는 함수
 def load_and_index_pdfs(uploaded_files):
     all_texts = []
-    metadatas = []
+    metadatas = []  # 메타데이터 저장용 리스트
+    for uploaded_file in uploaded_files:
+        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+            temp_file.write(uploaded_file.read())
+            temp_file_path = temp_file.name
+            reader = PdfReader(temp_file_path)
 
-    with ThreadPoolExecutor() as executor:
-        results = list(executor.map(process_pdf_file, uploaded_files))
+            # PDF의 각 페이지를 처리
+            for page_number, page in enumerate(reader.pages, start=1):
+                text = page.extract_text()
 
-    # 병렬 처리된 결과 합치기
-    for texts, metadata in results:
-        all_texts.extend(texts)
-        metadatas.extend(metadata)
+                if text is None:  # 텍스트 추출이 안되면 빈 텍스트 처리
+                    text = "[텍스트 추출 불가]"
+
+                all_texts.append(text)
+
+                # 메타데이터 추가: 문서명과 페이지 번호
+                metadatas.append({"document_name": uploaded_file.name, "page_number": page_number})
 
     # 텍스트를 작은 덩어리로 나누기
     splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
     docs = splitter.create_documents(all_texts, metadatas=metadatas)
 
-    embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)
+    if not openai_api_key:
+        raise ValueError("OPENAI_API_KEY를 설정하세요.")  # API 키 확인
+
+    embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)  # API 키 전달
     vector_store = FAISS.from_documents(docs, embeddings)
     return vector_store
 
@@ -80,12 +66,11 @@ def main():
     uploaded_files = st.file_uploader("PDF 파일을 업로드하세요", accept_multiple_files=True, type="pdf")
 
     if uploaded_files:
-        with st.spinner("파일 처리 중..."):
-            vector_store = load_and_index_pdfs(uploaded_files)
-        st.success("처리 완료!")
-
-        # QA 체인 생성
+        with st.spinner("파일 처리 중..."
+        # 업로드된 파일들을 인덱싱
+        vector_store = load_and_index_pdfs(uploaded_files)
         qa_chain = create_qa_chain(vector_store)
+        st.success("처리 완료!")
 
         # 질문 입력 받기
         query = st.text_input("질문을 입력하세요:")
