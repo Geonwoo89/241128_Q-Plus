@@ -1,7 +1,5 @@
 import tempfile
-from PyPDF2 import PdfReader
-from PIL import Image
-import pytesseract
+import pdfplumber
 from langchain.text_splitter import CharacterTextSplitter
 from langchain_community.embeddings import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
@@ -17,25 +15,28 @@ openai_api_key = st.secrets["openai"]["api_key"]
 def load_and_index_pdfs(uploaded_files):
     all_texts = []
     metadatas = []  # 메타데이터 저장용 리스트
+    
     for uploaded_file in uploaded_files:
         with tempfile.NamedTemporaryFile(delete=False) as temp_file:
             temp_file.write(uploaded_file.read())
             temp_file_path = temp_file.name
-            reader = PdfReader(temp_file_path)
 
-            # PDF의 각 페이지를 처리
-            for page_number, page in enumerate(reader.pages, start=1):
-                text = page.extract_text()
+            # PDFPlumber로 텍스트 추출
+            with pdfplumber.open(temp_file_path) as pdf:
+                for page_number, page in enumerate(pdf.pages, start=1):
+                    text = page.extract_text()
 
-                if text is None:  # 텍스트 추출이 안되면 이미지 처리
-                    # 페이지를 이미지로 변환 후 OCR 처리
-                    images = page_to_images(temp_file_path, page_number)
-                    text = ocr_from_images(images)
+                    # 텍스트가 없을 경우 빈 문자열로 처리
+                    if text is None:
+                        text = "[빈 페이지]"
 
-                all_texts.append(text)
+                    all_texts.append(text)
 
-                # 메타데이터 추가: 문서명과 페이지 번호
-                metadatas.append({"document_name": uploaded_file.name, "page_number": page_number})
+                    # 메타데이터 추가: 문서명과 페이지 번호
+                    metadatas.append({
+                        "document_name": uploaded_file.name,
+                        "page_number": page_number
+                    })
 
     # 텍스트를 작은 덩어리로 나누기
     splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
@@ -47,19 +48,6 @@ def load_and_index_pdfs(uploaded_files):
     embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)  # API 키 전달
     vector_store = FAISS.from_documents(docs, embeddings)
     return vector_store
-
-# 페이지를 이미지로 변환하는 함수 (PDF에서 이미지 추출)
-def page_to_images(pdf_path, page_number):
-    from pdf2image import convert_from_path
-    images = convert_from_path(pdf_path, first_page=page_number, last_page=page_number)
-    return images
-
-# 이미지에서 텍스트를 추출하는 함수 (OCR)
-def ocr_from_images(images):
-    text = ""
-    for image in images:
-        text += pytesseract.image_to_string(image)
-    return text
 
 # QA 체인 생성 함수
 def create_qa_chain(vector_store):
@@ -82,15 +70,12 @@ def main():
     # PDF 파일 업로드 기능
     uploaded_files = st.file_uploader("PDF 파일을 업로드하세요", accept_multiple_files=True, type="pdf")
 
-    import time
-    with st.spinner("파일 처리 중..."):
-        time.sleep()  # 예시로 처리 시간 대체
-    st.success("처리 완료!")
-
-
     if uploaded_files:
-        # 업로드된 파일들을 인덱싱
-        vector_store = load_and_index_pdfs(uploaded_files)
+        with st.spinner("파일 처리 중..."):
+            vector_store = load_and_index_pdfs(uploaded_files)
+        st.success("처리 완료!")
+
+        # QA 체인 생성
         qa_chain = create_qa_chain(vector_store)
 
         # 질문 입력 받기
