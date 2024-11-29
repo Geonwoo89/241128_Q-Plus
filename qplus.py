@@ -7,45 +7,54 @@ from langchain.chains import RetrievalQA
 from langchain.chat_models import ChatOpenAI
 import streamlit as st
 import io
+from concurrent.futures import ThreadPoolExecutor
 
 # Streamlit secrets에서 API 키 읽어오기
 openai_api_key = st.secrets["openai"]["api_key"]
 
+# 병렬 처리를 위한 함수
+def process_pdf_file(uploaded_file):
+    with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+        temp_file.write(uploaded_file.read())
+        temp_file_path = temp_file.name
+
+        # PDFPlumber로 텍스트 추출
+        texts = []
+        metadatas = []
+
+        with pdfplumber.open(temp_file_path) as pdf:
+            for page_number, page in enumerate(pdf.pages, start=1):
+                text = page.extract_text()
+
+                if not text:
+                    text = "[빈 페이지]"
+
+                texts.append(text)
+                metadatas.append({
+                    "document_name": uploaded_file.name,
+                    "page_number": page_number
+                })
+
+        return texts, metadatas
+
 # PDF 파일을 업로드하고 인덱싱하는 함수
 def load_and_index_pdfs(uploaded_files):
     all_texts = []
-    metadatas = []  # 메타데이터 저장용 리스트
-    
-    for uploaded_file in uploaded_files:
-        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-            temp_file.write(uploaded_file.read())
-            temp_file_path = temp_file.name
+    metadatas = []
 
-            # PDFPlumber로 텍스트 추출
-            with pdfplumber.open(temp_file_path) as pdf:
-                for page_number, page in enumerate(pdf.pages, start=1):
-                    text = page.extract_text()
+    with ThreadPoolExecutor() as executor:
+        results = list(executor.map(process_pdf_file, uploaded_files))
 
-                    # 텍스트가 없을 경우 빈 문자열로 처리
-                    if text is None:
-                        text = "[빈 페이지]"
-
-                    all_texts.append(text)
-
-                    # 메타데이터 추가: 문서명과 페이지 번호
-                    metadatas.append({
-                        "document_name": uploaded_file.name,
-                        "page_number": page_number
-                    })
+    # 병렬 처리된 결과 합치기
+    for texts, metadata in results:
+        all_texts.extend(texts)
+        metadatas.extend(metadata)
 
     # 텍스트를 작은 덩어리로 나누기
     splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
     docs = splitter.create_documents(all_texts, metadatas=metadatas)
 
-    if not openai_api_key:
-        raise ValueError("OPENAI_API_KEY를 설정하세요.")  # API 키 확인
-
-    embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)  # API 키 전달
+    embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)
     vector_store = FAISS.from_documents(docs, embeddings)
     return vector_store
 

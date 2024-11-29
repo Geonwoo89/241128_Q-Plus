@@ -2,10 +2,7 @@ streamlit
 langchain
 openai
 pdfplumber
-faiss-cpu
+PyMuPDF
 langchain-community
-python-dotenv
-tiktoken
-pdf2image
-pytesseract
-Pillow
+faiss-cpu
+concurrent
