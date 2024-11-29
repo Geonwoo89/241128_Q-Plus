@@ -1,8 +1,6 @@
-streamlit
-langchain
-openai
-pdfplumber
-PyMuPDF
-langchain-community
-faiss-cpu
-concurrent
+streamlit==1.19.0
+langchain==0.0.195
+openai==0.27.0
+pdfplumber==0.10.0
+PyMuPDF==1.22.0
+faiss-cpu==1.7.4
