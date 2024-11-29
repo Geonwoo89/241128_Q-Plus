@@ -1,6 +1,5 @@
 import tempfile
-import pdfplumber
-from concurrent.futures import ThreadPoolExecutor
+from PyPDF2 import PdfReader
 from PIL import Image
 import pytesseract
 from langchain.text_splitter import CharacterTextSplitter
@@ -14,6 +13,41 @@ import io
 # Streamlit secrets에서 API 키 읽어오기
 openai_api_key = st.secrets["openai"]["api_key"]
 
+# PDF 파일을 업로드하고 인덱싱하는 함수
+def load_and_index_pdfs(uploaded_files):
+    all_texts = []
+    metadatas = []  # 메타데이터 저장용 리스트
+    for uploaded_file in uploaded_files:
+        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+            temp_file.write(uploaded_file.read())
+            temp_file_path = temp_file.name
+            reader = PdfReader(temp_file_path)
+
+            # PDF의 각 페이지를 처리
+            for page_number, page in enumerate(reader.pages, start=1):
+                text = page.extract_text()
+
+                if text is None:  # 텍스트 추출이 안되면 이미지 처리
+                    # 페이지를 이미지로 변환 후 OCR 처리
+                    images = page_to_images(temp_file_path, page_number)
+                    text = ocr_from_images(images)
+
+                all_texts.append(text)
+
+                # 메타데이터 추가: 문서명과 페이지 번호
+                metadatas.append({"document_name": uploaded_file.name, "page_number": page_number})
+
+    # 텍스트를 작은 덩어리로 나누기
+    splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+    docs = splitter.create_documents(all_texts, metadatas=metadatas)
+
+    if not openai_api_key:
+        raise ValueError("OPENAI_API_KEY를 설정하세요.")  # API 키 확인
+
+    embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)  # API 키 전달
+    vector_store = FAISS.from_documents(docs, embeddings)
+    return vector_store
+
 # 페이지를 이미지로 변환하는 함수 (PDF에서 이미지 추출)
 def page_to_images(pdf_path, page_number):
     from pdf2image import convert_from_path
@@ -24,52 +58,8 @@ def page_to_images(pdf_path, page_number):
 def ocr_from_images(images):
     text = ""
     for image in images:
-        text += pytesseract.image_to_string(image)  # 기본 OCR 수행
+        text += pytesseract.image_to_string(image)
     return text
-
-# PDF의 페이지를 처리하는 함수
-def process_page(page, page_number, pdf_path, document_name):
-    text = page.extract_text()
-    if text is None:  # 텍스트가 없으면 OCR 수행
-        images = page_to_images(pdf_path, page_number)
-        text = ocr_from_images(images)
-    metadata = {"document_name": document_name, "page_number": page_number}
-    return text, metadata
-
-# PDF 파일을 업로드하고 인덱싱하는 함수
-@st.cache_data
-def load_and_index_pdfs(uploaded_files):
-    all_texts = []
-    metadatas = []
-
-    for uploaded_file in uploaded_files:
-        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-            temp_file.write(uploaded_file.read())
-            temp_file_path = temp_file.name
-
-            with pdfplumber.open(temp_file_path) as pdf:
-                # 병렬로 페이지 처리
-                with ThreadPoolExecutor() as executor:
-                    results = list(executor.map(
-                        lambda args: process_page(*args),
-                        [(page, page_number, temp_file_path, uploaded_file.name) 
-                         for page_number, page in enumerate(pdf.pages, start=1)]
-                    ))
-            
-            texts, metadata_list = zip(*results)
-            all_texts.extend(texts)
-            metadatas.extend(metadata_list)
-
-    # 텍스트를 작은 덩어리로 나누기
-    splitter = CharacterTextSplitter(chunk_size=1500, chunk_overlap=100)
-    docs = splitter.create_documents(all_texts, metadatas=metadatas)
-
-    if not openai_api_key:
-        raise ValueError("OPENAI_API_KEY를 설정하세요.")  # API 키 확인
-
-    embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)  # API 키 전달
-    vector_store = FAISS.from_documents(docs, embeddings)
-    return vector_store
 
 # QA 체인 생성 함수
 def create_qa_chain(vector_store):
@@ -91,6 +81,12 @@ def main():
 
     # PDF 파일 업로드 기능
     uploaded_files = st.file_uploader("PDF 파일을 업로드하세요", accept_multiple_files=True, type="pdf")
+
+    import time
+    with st.spinner("파일 처리 중..."):
+        time.sleep()  # 예시로 처리 시간 대체
+    st.success("처리 완료!")
+
 
     if uploaded_files:
         # 업로드된 파일들을 인덱싱
