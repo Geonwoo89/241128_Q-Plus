@@ -66,7 +66,6 @@ def main():
     uploaded_files = st.file_uploader("PDF 파일을 업로드하세요", accept_multiple_files=True, type="pdf")
 
     if uploaded_files:
-        with st.spinner("파일 처리 중..."):
         # 업로드된 파일들을 인덱싱
         vector_store = load_and_index_pdfs(uploaded_files)
         qa_chain = create_qa_chain(vector_store)
